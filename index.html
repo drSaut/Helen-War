@@ -2,27 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Helen War - Tactical AI (Synced)</title>
+    <title>Helen War - Mobile Tactical</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #fff; }
-        canvas { display: none; touch-action: none; position: absolute; top: 0; left: 0; }
+        
+        /* The canvas will be centered for tablet users */
+        canvas { 
+            display: none; 
+            touch-action: none; 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+        }
+
         #menu { position: absolute; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 5000; }
         h1 { font-size: 45px; color: #00ff00; text-shadow: 0 0 20px #00ff00; margin-bottom: 5px; }
         .instr { font-size: 12px; margin-bottom: 30px; color: #888; text-transform: uppercase; letter-spacing: 2px; }
         .btn { width: 260px; padding: 15px; margin: 10px; border: 2px solid #00ff00; background: rgba(0,255,0,0.05); color: #00ff00; font-weight: bold; cursor: pointer; border-radius: 12px; font-size: 14px; text-transform: uppercase; }
         .btn:active { background: #00ff00; color: #000; }
+        
         #online-setup { display: none; flex-direction: column; align-items: center; }
         input { padding: 12px; margin: 10px; background: #111; border: 1px solid #00ff00; color: #fff; text-align: center; border-radius: 8px; width: 220px; }
+        
         #ui { position: absolute; top: 20px; width: 100%; display: none; justify-content: space-around; z-index: 10; font-size: 22px; pointer-events: none; }
         .score-card { border: 2px solid #00ff00; padding: 8px 20px; border-radius: 10px; background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(0,255,0,0.4); }
-        #notif { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 35px; font-weight: bold; z-index: 2000; text-shadow: 0 0 15px #fff; }
+        
+        #notif { position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 35px; font-weight: bold; z-index: 2000; text-shadow: 0 0 15px #fff; }
+        
+        /* Controls stay at the bottom of the PHYSICAL screen */
         #controls { display: none; }
-        #joyBase { position: absolute; bottom: 50px; left: 40px; width: 110px; height: 110px; background: rgba(255,255,255,0.05); border: 2px solid #00ff00; border-radius: 50%; z-index: 100; touch-action: none; }
+        #joyBase { position: absolute; bottom: 40px; left: 30px; width: 110px; height: 110px; background: rgba(255,255,255,0.05); border: 2px solid #00ff00; border-radius: 50%; z-index: 100; touch-action: none; }
         #joyKnob { position: absolute; top: 35px; left: 35px; width: 40px; height: 40px; background: #00ff00; border-radius: 50%; opacity: 0.7; pointer-events: none; }
-        #fireBtn { position: absolute; bottom: 50px; right: 40px; width: 100px; height: 100px; border-radius: 50%; background: rgba(0, 255, 0, 0.2); border: 4px solid #00ff00; color: #00ff00; display: flex; justify-content: center; align-items: center; font-weight: bold; z-index: 100; touch-action: none; font-size: 18px; box-shadow: 0 0 20px rgba(0,255,0,0.4); }
+        #fireBtn { position: absolute; bottom: 40px; right: 30px; width: 100px; height: 100px; border-radius: 50%; background: rgba(0, 255, 0, 0.2); border: 4px solid #00ff00; color: #00ff00; display: flex; justify-content: center; align-items: center; font-weight: bold; z-index: 100; touch-action: none; font-size: 18px; box-shadow: 0 0 20px rgba(0,255,0,0.4); }
+        
         #splash-win { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 6000; }
     </style>
 </head>
@@ -36,7 +52,7 @@
 
     <div id="menu">
         <h1>HELEN WAR</h1>
-        <p class="instr">MISSION: SYNCED TACTICAL COMBAT</p>
+        <p class="instr">PHONE-FIRST SYNCED COMBAT</p>
         <div id="main-btns">
             <button class="btn" onclick="startOffline()">OFFLINE VS AI</button>
             <button class="btn" onclick="showOnline()">ONLINE VS FRIEND</button>
@@ -67,9 +83,9 @@
     const ctx = canvas.getContext('2d');
     const peer = new Peer();
     
-    // --- VIRTUAL ARENA SETTINGS ---
-    const V_WIDTH = 1200; // Constant logic width
-    const V_HEIGHT = 800; // Constant logic height
+    // --- VIRTUAL ARENA (Standard Phone Portrait 9:16) ---
+    const V_WIDTH = 720;  
+    const V_HEIGHT = 1280; 
     let scale = 1;
 
     let mode = "ai"; 
@@ -77,8 +93,8 @@
     let gameActive = false, isPaused = false;
     let pScore = 0, eScore = 0;
     
-    let player = { x: 100, y: 100, r: 20, color: '#00ff00', angle: 0, speed: 5 };
-    let enemy = { x: 0, y: 0, r: 20, color: '#ff0000', lastShot: 0, targetX: 0, targetY: 0, targetAngle: 0 };
+    let player = { x: 100, y: 100, r: 22, color: '#00ff00', angle: 0, speed: 6 };
+    let enemy = { x: 0, y: 0, r: 22, color: '#ff0000', lastShot: 0, targetX: 0, targetY: 0, targetAngle: 0 };
     let bullets = [], walls = [];
     let stick = { x: 0, y: 0, active: false };
 
@@ -112,16 +128,22 @@
     function showOnline() { document.getElementById('main-btns').style.display = 'none'; document.getElementById('online-setup').style.display = 'flex'; }
 
     function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        // Calculate scale to fit virtual arena into screen while maintaining aspect ratio
-        scale = Math.min(canvas.width / V_WIDTH, canvas.height / V_HEIGHT);
+        // Find the best scale to fit the V_HEIGHT into the screen
+        scale = window.innerHeight / V_HEIGHT;
+        
+        // If the scaled width is too wide for the screen, scale based on width instead
+        if (V_WIDTH * scale > window.innerWidth) {
+            scale = window.innerWidth / V_WIDTH;
+        }
+
+        canvas.width = V_WIDTH * scale;
+        canvas.height = V_HEIGHT * scale;
+        canvas.style.display = 'block';
     }
     window.addEventListener('resize', resize);
 
     function startGame() {
         resize();
-        canvas.style.display = 'block';
         document.getElementById('ui').style.display = 'flex';
         document.getElementById('controls').style.display = 'block';
         
@@ -135,27 +157,26 @@
     }
 
     function generateWalls() {
-        let t = 15;
+        let t = 20;
         let arr = [
-            {x:0, y:0, w:V_WIDTH, h:t}, // Top
-            {x:0, y:V_HEIGHT-t, w:V_WIDTH, h:t}, // Bottom
-            {x:0, y:0, w:t, h:V_HEIGHT}, // Left
-            {x:V_WIDTH-t, y:0, w:t, h:V_HEIGHT} // Right
+            {x:0, y:0, w:V_WIDTH, h:t}, 
+            {x:0, y:V_HEIGHT-t, w:V_WIDTH, h:t}, 
+            {x:0, y:0, w:t, h:V_HEIGHT}, 
+            {x:V_WIDTH-t, y:0, w:t, h:V_HEIGHT} 
         ];
-        const wallCount = 8;
-        for(let i=0; i < wallCount; i++) {
+        for(let i=0; i < 8; i++) {
             let isV = Math.random() > 0.5;
-            let ww = isV ? 20 : 150 + Math.random()*200;
-            let hh = isV ? 150 + Math.random()*200 : 20;
-            let wx = 150 + Math.random()*(V_WIDTH-400);
-            let wy = 150 + Math.random()*(V_HEIGHT-400);
+            let ww = isV ? 20 : 100 + Math.random()*200;
+            let hh = isV ? 100 + Math.random()*200 : 20;
+            let wx = 100 + Math.random()*(V_WIDTH-300);
+            let wy = 200 + Math.random()*(V_HEIGHT-500);
             arr.push({x:wx, y:wy, w:ww, h:hh});
         }
         return arr;
     }
 
     function resetRound() {
-        const pad = 100;
+        const pad = 120;
         if(mode === "ai") { 
             player.x = pad; player.y = pad; 
             enemy.x = V_WIDTH - pad; enemy.y = V_HEIGHT - pad; 
@@ -176,11 +197,11 @@
 
     function spawnBullet(owner, angle) {
         bullets.push({ 
-            x: owner.x + Math.cos(angle)*30, 
-            y: owner.y + Math.sin(angle)*30, 
-            vx: Math.cos(angle)*7, 
-            vy: Math.sin(angle)*7, 
-            r: 8, 
+            x: owner.x + Math.cos(angle)*35, 
+            y: owner.y + Math.sin(angle)*35, 
+            vx: Math.cos(angle)*9, 
+            vy: Math.sin(angle)*9, 
+            r: 7, 
             color: owner.color === '#00ff00' ? '#fff' : '#f44', 
             spawnTime: Date.now() 
         });
@@ -258,24 +279,22 @@
     function updateUI() { document.getElementById('pScore').innerText = pScore; document.getElementById('eScore').innerText = eScore; }
 
     function draw() {
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        ctx.setTransform(1, 0, 0, 1, 0, 0); 
         ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
         
-        // --- APPLY SCALING ---
-        // Center the arena on screen
-        let offsetX = (canvas.width - V_WIDTH * scale) / 2;
-        let offsetY = (canvas.height - V_HEIGHT * scale) / 2;
-        ctx.translate(offsetX, offsetY);
+        // Scale logic to the canvas size
         ctx.scale(scale, scale);
 
-        // Draw Arena Boundary
-        ctx.strokeStyle = "#111"; ctx.lineWidth = 1; ctx.strokeRect(0,0,V_WIDTH, V_HEIGHT);
+        // Grid
+        ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 1;
+        for(let x=0; x<V_WIDTH; x+=100) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,V_HEIGHT); ctx.stroke(); }
+        for(let y=0; y<V_HEIGHT; y+=100) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(V_WIDTH,y); ctx.stroke(); }
 
-        // Draw Walls
-        ctx.shadowBlur = 10; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "#0ff"; ctx.lineWidth = 3;
+        // Walls
+        ctx.shadowBlur = 10; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "#0ff"; ctx.lineWidth = 4;
         walls.forEach(w => ctx.strokeRect(w.x, w.y, w.w, w.h)); ctx.shadowBlur = 0;
         
-        // Draw Players
+        // Players
         [player, enemy].forEach(c => {
             ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.angle);
             ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill();
@@ -283,7 +302,6 @@
             ctx.restore();
         });
         
-        // Draw Bullets
         bullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); });
     }
 
