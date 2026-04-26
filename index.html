@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Helen War - Tactical AI</title>
+    <title>Helen War - Tactical AI (Synced)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -36,7 +36,7 @@
 
     <div id="menu">
         <h1>HELEN WAR</h1>
-        <p class="instr">MISSION: ELIMINATE THE TARGET</p>
+        <p class="instr">MISSION: SYNCED TACTICAL COMBAT</p>
         <div id="main-btns">
             <button class="btn" onclick="startOffline()">OFFLINE VS AI</button>
             <button class="btn" onclick="showOnline()">ONLINE VS FRIEND</button>
@@ -67,13 +67,18 @@
     const ctx = canvas.getContext('2d');
     const peer = new Peer();
     
+    // --- VIRTUAL ARENA SETTINGS ---
+    const V_WIDTH = 1200; // Constant logic width
+    const V_HEIGHT = 800; // Constant logic height
+    let scale = 1;
+
     let mode = "ai"; 
     let conn;
     let gameActive = false, isPaused = false;
     let pScore = 0, eScore = 0;
     
-    let player = { x: 60, y: 60, r: 15, color: '#00ff00', angle: 0, speed: 2.2 };
-    let enemy = { x: 0, y: 0, r: 15, color: '#ff0000', lastShot: 0, vx: 1.5, targetX: 0, targetY: 0, targetAngle: 0 };
+    let player = { x: 100, y: 100, r: 20, color: '#00ff00', angle: 0, speed: 5 };
+    let enemy = { x: 0, y: 0, r: 20, color: '#ff0000', lastShot: 0, targetX: 0, targetY: 0, targetAngle: 0 };
     let bullets = [], walls = [];
     let stick = { x: 0, y: 0, active: false };
 
@@ -106,9 +111,16 @@
     function startOffline() { mode = "ai"; document.getElementById('menu').style.display = 'none'; startGame(); }
     function showOnline() { document.getElementById('main-btns').style.display = 'none'; document.getElementById('online-setup').style.display = 'flex'; }
 
-    function startGame() {
-        canvas.width = window.innerWidth; 
+    function resize() {
+        canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        // Calculate scale to fit virtual arena into screen while maintaining aspect ratio
+        scale = Math.min(canvas.width / V_WIDTH, canvas.height / V_HEIGHT);
+    }
+    window.addEventListener('resize', resize);
+
+    function startGame() {
+        resize();
         canvas.style.display = 'block';
         document.getElementById('ui').style.display = 'flex';
         document.getElementById('controls').style.display = 'block';
@@ -123,64 +135,52 @@
     }
 
     function generateWalls() {
-        const w = canvas.width, h = canvas.height;
-        let t = 10;
-        let arr = [{x:0,y:0,w:w,h:t},{x:0,y:h-t,w:w,h:t},{x:0,y:0,w:t,h:h},{x:w-t,y:0,w:t,h:h}];
-        const wallCount = 6 + Math.floor(Math.random()*4);
+        let t = 15;
+        let arr = [
+            {x:0, y:0, w:V_WIDTH, h:t}, // Top
+            {x:0, y:V_HEIGHT-t, w:V_WIDTH, h:t}, // Bottom
+            {x:0, y:0, w:t, h:V_HEIGHT}, // Left
+            {x:V_WIDTH-t, y:0, w:t, h:V_HEIGHT} // Right
+        ];
+        const wallCount = 8;
         for(let i=0; i < wallCount; i++) {
-            let isV = Math.random()>0.5;
-            let ww = isV?15:60+Math.random()*100;
-            let hh = isV?60+Math.random()*100:15;
-            let wx = 100 + Math.random()*(w-200);
-            let wy = 100 + Math.random()*(h-200);
-            // ANTI-BOXING: Clear larger corner zones
-            if ((wx < 200 && wy < 200) || (wx > w-200 && wy > h-200)) continue;
+            let isV = Math.random() > 0.5;
+            let ww = isV ? 20 : 150 + Math.random()*200;
+            let hh = isV ? 150 + Math.random()*200 : 20;
+            let wx = 150 + Math.random()*(V_WIDTH-400);
+            let wy = 150 + Math.random()*(V_HEIGHT-400);
             arr.push({x:wx, y:wy, w:ww, h:hh});
         }
         return arr;
     }
 
     function resetRound() {
-        const w = canvas.width, h = canvas.height;
-        const pad = 70; // Safe distance from walls
-        
+        const pad = 100;
         if(mode === "ai") { 
             player.x = pad; player.y = pad; 
-            enemy.x = w - pad; enemy.y = h - pad; 
+            enemy.x = V_WIDTH - pad; enemy.y = V_HEIGHT - pad; 
         } else if(mode === "guest") { 
-            player.x = w - pad; player.y = h - pad; 
+            player.x = V_WIDTH - pad; player.y = V_HEIGHT - pad; 
             enemy.x = enemy.targetX = pad; enemy.targetY = pad; 
-        } else { // host
+        } else { 
             player.x = pad; player.y = pad; 
-            enemy.x = enemy.targetX = w - pad; enemy.targetY = h - pad; 
+            enemy.x = enemy.targetX = V_WIDTH - pad; enemy.targetY = V_HEIGHT - pad; 
         }
         bullets = [];
-
-        // Final safety check: if still in wall, move to middle
-        setTimeout(() => {
-            if(checkWall(player, player.x, player.y)) {
-                player.x = w/2; player.y = h/2;
-            }
-        }, 50);
     }
 
     function fire(owner, angle) {
-        if (owner === enemy && mode === "ai") {
-            let checkX = owner.x + Math.cos(angle) * 25;
-            let checkY = owner.y + Math.sin(angle) * 25;
-            if (checkWall({r:2}, checkX, checkY)) return; 
-        }
         spawnBullet(owner, angle);
         if(conn) conn.send({type: 'fire', angle: angle});
     }
 
     function spawnBullet(owner, angle) {
         bullets.push({ 
-            x: owner.x + Math.cos(angle)*22, 
-            y: owner.y + Math.sin(angle)*22, 
-            vx: Math.cos(angle)*2.5, 
-            vy: Math.sin(angle)*2.5, 
-            r: 6, 
+            x: owner.x + Math.cos(angle)*30, 
+            y: owner.y + Math.sin(angle)*30, 
+            vx: Math.cos(angle)*7, 
+            vy: Math.sin(angle)*7, 
+            r: 8, 
             color: owner.color === '#00ff00' ? '#fff' : '#f44', 
             spawnTime: Date.now() 
         });
@@ -198,39 +198,35 @@
         if(conn) conn.send({type:'sync', x:player.x, y:player.y, angle:player.angle});
 
         if(mode !== "ai") {
-            enemy.x += (enemy.targetX - enemy.x) * 0.2;
-            enemy.y += (enemy.targetY - enemy.y) * 0.2;
-            enemy.angle += (enemy.targetAngle - enemy.angle) * 0.2;
+            enemy.x += (enemy.targetX - enemy.x) * 0.3;
+            enemy.y += (enemy.targetY - enemy.y) * 0.3;
+            enemy.angle += (enemy.targetAngle - enemy.angle) * 0.3;
         } else {
             let dx = player.x - enemy.x, dy = player.y - enemy.y, dist = Math.hypot(dx, dy);
-            let dodging = false;
-            bullets.forEach(b => { 
-                if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < 80) { 
-                    let escapeX = enemy.x - b.vy*0.8, escapeY = enemy.y + b.vx*0.8;
-                    if(!checkWall(enemy, escapeX, escapeY)) { enemy.x = escapeX; enemy.y = escapeY; dodging = true; }
-                }
-            });
-            if(!dodging) {
-                let mx = (dx/dist)*1.4, my = (dy/dist)*1.4;
-                if(dist > 180) { if(!checkWall(enemy, enemy.x+mx, enemy.y)) enemy.x += mx; if(!checkWall(enemy, enemy.x, enemy.y+my)) enemy.y += my; }
-                else if(dist < 120) { if(!checkWall(enemy, enemy.x-mx, enemy.y)) enemy.x -= mx; if(!checkWall(enemy, enemy.x, enemy.y-my)) enemy.y -= my; }
-            }
             enemy.angle = Math.atan2(dy, dx);
-            if(Date.now()-enemy.lastShot > 3000 && dist < 500) { fire(enemy, enemy.angle); enemy.lastShot = Date.now(); }
+            if(Date.now()-enemy.lastShot > 2500 && dist < 800) { fire(enemy, enemy.angle); enemy.lastShot = Date.now(); }
         }
 
         for(let i=bullets.length-1; i>=0; i--) {
             let b = bullets[i]; b.x += b.vx; b.y += b.vy;
-            if(Date.now()-b.spawnTime > 7000) { bullets.splice(i,1); continue; }
+            if(Date.now()-b.spawnTime > 5000) { bullets.splice(i,1); continue; }
+            
             for(let w of walls) {
                 if(b.x+b.r > w.x && b.x-b.r < w.x+w.w && b.y+b.r > w.y && b.y-b.r < w.y+w.h) {
                     let min = Math.min((b.x+b.r)-w.x, (w.x+w.w)-(b.x-b.r), (b.y+b.r)-w.y, (w.y+w.h)-(b.y-b.r));
                     if(min === (b.x+b.r)-w.x || min === (w.x+w.w)-(b.x-b.r)) b.vx *= -1; else b.vy *= -1;
-                    b.x += b.vx; b.y += b.vy; break;
+                    break;
                 }
             }
-            if(Math.hypot(b.x-player.x, b.y-player.y) < player.r) { bullets.splice(i,1); if(mode !== "guest") { eScore++; syncScore('ai'); } }
-            else if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < enemy.r) { bullets.splice(i,1); if(mode !== "guest") { pScore++; syncScore('player'); } }
+            
+            if(Math.hypot(b.x-player.x, b.y-player.y) < player.r + b.r) { 
+                bullets.splice(i,1); 
+                if(mode !== "guest") { eScore++; syncScore('ai'); } 
+            }
+            else if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < enemy.r + b.r) { 
+                bullets.splice(i,1); 
+                if(mode !== "guest") { pScore++; syncScore('player'); } 
+            }
         }
     }
 
@@ -247,14 +243,9 @@
                 gameActive = false; 
                 document.getElementById('winText').innerText = pScore >= 3 ? "MISSION ACCOMPLISHED" : "MISSION FAILED"; 
                 document.getElementById('splash-win').style.display = 'flex'; 
-            }
-            else { 
-                if(mode !== "guest") { 
-                    walls = generateWalls(); 
-                    if(conn) conn.send({type:'walls', walls: walls}); 
-                } 
-                resetRound(); 
-                isPaused = false; 
+            } else { 
+                if(mode !== "guest") { walls = generateWalls(); if(conn) conn.send({type:'walls', walls: walls}); } 
+                resetRound(); isPaused = false; 
             }
         }, 2000);
     }
@@ -267,16 +258,32 @@
     function updateUI() { document.getElementById('pScore').innerText = pScore; document.getElementById('eScore').innerText = eScore; }
 
     function draw() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
         ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.shadowBlur = 10; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "#0ff"; ctx.lineWidth = 2;
+        
+        // --- APPLY SCALING ---
+        // Center the arena on screen
+        let offsetX = (canvas.width - V_WIDTH * scale) / 2;
+        let offsetY = (canvas.height - V_HEIGHT * scale) / 2;
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        // Draw Arena Boundary
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 1; ctx.strokeRect(0,0,V_WIDTH, V_HEIGHT);
+
+        // Draw Walls
+        ctx.shadowBlur = 10; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "#0ff"; ctx.lineWidth = 3;
         walls.forEach(w => ctx.strokeRect(w.x, w.y, w.w, w.h)); ctx.shadowBlur = 0;
         
+        // Draw Players
         [player, enemy].forEach(c => {
             ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.angle);
             ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(c.r-4,0,4,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(c.r-5,0,6,0,Math.PI*2); ctx.fill();
             ctx.restore();
         });
+        
+        // Draw Bullets
         bullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); });
     }
 
@@ -293,15 +300,8 @@
         player.angle = Math.atan2(dy,dx);
     }, {passive:false});
     
-    window.addEventListener('touchend', () => { 
-        stick.active=false; stick.x=0; stick.y=0; 
-        document.getElementById('joyKnob').style.transform=`translate(0,0)`; 
-    });
-
-    document.getElementById('fireBtn').addEventListener('touchstart', e => { 
-        e.preventDefault(); 
-        if(gameActive && !isPaused) fire(player, player.angle); 
-    });
+    window.addEventListener('touchend', () => { stick.active=false; stick.x=0; stick.y=0; document.getElementById('joyKnob').style.transform=`translate(0,0)`; });
+    document.getElementById('fireBtn').addEventListener('touchstart', e => { e.preventDefault(); if(gameActive && !isPaused) fire(player, player.angle); });
 </script>
 </body>
 </html>
