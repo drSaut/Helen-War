@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Helen War - Online Tactical</title>
+    <title>Helen War - Pro Duel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -30,7 +30,7 @@
 
         /* HUD */
         #ui { position: absolute; top: 20px; width: 100%; display: none; justify-content: space-around; z-index: 10; font-size: 22px; pointer-events: none; }
-        .score-card { border: 2px solid #00ff00; padding: 8px 20px; border-radius: 10px; background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(0,255,0,0.3); }
+        .score-card { border: 2px solid #00ff00; padding: 8px 20px; border-radius: 10px; background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(0,255,0,0.4); }
         
         #notif { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 35px; font-weight: bold; z-index: 2000; text-shadow: 0 0 15px #fff; }
         
@@ -62,8 +62,8 @@
 
         <div id="online-setup">
             <p id="my-id" style="color:#888; font-size:11px; margin-bottom: 5px;">CONNECTING TO WRC...</p>
-            <button class="btn" onclick="shareID()" style="border-color: #25D366; color: #25D366; font-size: 11px;">SHARE MY ID (WHATSAPP)</button>
-            <input type="text" id="join-id" placeholder="PASTE FRIEND ID">
+            <button class="btn" onclick="shareID()" style="border-color: #25D366; color: #25D366; font-size: 11px;">SHARE ID VIA WHATSAPP</button>
+            <input type="text" id="join-id" placeholder="PASTE ID HERE">
             <button class="btn" onclick="connectToFriend()">JOIN DUEL</button>
             <button class="btn" style="border-color: #555; color: #555;" onclick="location.reload()">BACK</button>
         </div>
@@ -91,20 +91,19 @@
     let gameActive = false, isPaused = false;
     let pScore = 0, eScore = 0;
     
-    // Smooth Sync Variables
     let player = { x: 50, y: 50, r: 15, color: '#00ff00', angle: 0, speed: 2.2 };
     let enemy = { x: 0, y: 0, r: 15, color: '#ff0000', lastShot: 0, vx: 1.5, targetX: 0, targetY: 0, targetAngle: 0 };
     let bullets = [], walls = [];
     let stick = { x: 0, y: 0, active: false };
 
-    // --- NETWORKING ---
     peer.on('open', id => document.getElementById('my-id').innerText = "YOUR ID: " + id);
     peer.on('connection', c => { conn = c; mode = "host"; setupConnection(); });
 
+    // FIXED: Only share the ID itself
     function shareID() {
         const myID = peer.id;
         if(!myID) return alert("Still connecting...");
-        window.open(`https://wa.me/?text=${encodeURIComponent("Duel me in HELEN WAR! My ID: " + myID)}`, '_blank');
+        window.open(`https://wa.me/?text=${encodeURIComponent(myID)}`, '_blank');
     }
 
     function connectToFriend() {
@@ -127,7 +126,6 @@
         });
     }
 
-    // --- GAME ENGINE ---
     function startOffline() { mode = "ai"; document.getElementById('menu').style.display = 'none'; startGame(); }
     function showOnline() { document.getElementById('main-btns').style.display = 'none'; document.getElementById('online-setup').style.display = 'flex'; }
 
@@ -148,15 +146,22 @@
         let arr = [{x:0,y:0,w:w,h:t},{x:0,y:h-t,w:w,h:t},{x:0,y:0,w:t,h:h},{x:w-t,y:0,w:t,h:h}];
         for(let i=0; i<6; i++) {
             let isV = Math.random()>0.5;
-            arr.push({x:100+Math.random()*(w-200), y:100+Math.random()*(h-200), w:isV?15:80+Math.random()*100, h:isV?80+Math.random()*100:15});
+            arr.push({x:120+Math.random()*(w-240), y:120+Math.random()*(h-240), w:isV?15:80+Math.random()*100, h:isV?80+Math.random()*100:15});
         }
         return arr;
     }
 
+    // FIXED: Host starts Top-Left, Guest starts Bottom-Right
     function resetRound() {
-        player.x = 50; player.y = 50;
-        enemy.x = enemy.targetX = canvas.width - 50; 
-        enemy.y = enemy.targetY = canvas.height - 50;
+        const w = canvas.width;
+        const h = canvas.height;
+        if(mode === "guest") {
+            player.x = w - 50; player.y = h - 50; // Guest Bottom Right
+            enemy.x = enemy.targetX = 50; enemy.targetY = 50; // Enemy (Host) Top Left
+        } else {
+            player.x = 50; player.y = 50; // Host Top Left
+            enemy.x = enemy.targetX = w - 50; enemy.targetY = h - 50; // Enemy Bottom Right
+        }
         bullets = [];
     }
 
@@ -176,19 +181,16 @@
     function update() {
         if(!gameActive || isPaused) return;
 
-        // Player Move
         let nx = player.x + stick.x * player.speed, ny = player.y + stick.y * player.speed;
         if(!checkWall(player, nx, player.y)) player.x = nx;
         if(!checkWall(player, player.x, ny)) player.y = ny;
         if(conn) conn.send({type:'sync', x:player.x, y:player.y, angle:player.angle});
 
-        // Sync Enemy (Interpolation)
         if(mode !== "ai") {
             enemy.x += (enemy.targetX - enemy.x) * 0.2;
             enemy.y += (enemy.targetY - enemy.y) * 0.2;
             enemy.angle += (enemy.targetAngle - enemy.angle) * 0.2;
         } else {
-            // Smart AI
             let dx = player.x - enemy.x, dy = player.y - enemy.y, dist = Math.hypot(dx, dy);
             let dodging = false;
             bullets.forEach(b => { if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < 70) { enemy.x -= b.vy*0.7; enemy.y += b.vx*0.7; dodging = true; } });
