@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Helen War - Pro Duel</title>
+    <title>Helen War - Final Fix</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -10,7 +10,6 @@
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #fff; }
         canvas { display: none; touch-action: none; position: absolute; top: 0; left: 0; }
         
-        /* Main Menu */
         #menu {
             position: absolute; width: 100%; height: 100%; background: #000;
             display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 5000;
@@ -28,13 +27,11 @@
         #online-setup { display: none; flex-direction: column; align-items: center; }
         input { padding: 12px; margin: 10px; background: #111; border: 1px solid #00ff00; color: #fff; text-align: center; border-radius: 8px; width: 220px; }
 
-        /* HUD */
         #ui { position: absolute; top: 20px; width: 100%; display: none; justify-content: space-around; z-index: 10; font-size: 22px; pointer-events: none; }
         .score-card { border: 2px solid #00ff00; padding: 8px 20px; border-radius: 10px; background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(0,255,0,0.4); }
         
         #notif { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 35px; font-weight: bold; z-index: 2000; text-shadow: 0 0 15px #fff; }
         
-        /* Controls */
         #controls { display: none; }
         #joyBase { position: absolute; bottom: 50px; left: 40px; width: 110px; height: 110px; background: rgba(255,255,255,0.05); border: 2px solid #00ff00; border-radius: 50%; z-index: 100; touch-action: none; }
         #joyKnob { position: absolute; top: 35px; left: 35px; width: 40px; height: 40px; background: #00ff00; border-radius: 50%; opacity: 0.7; pointer-events: none; }
@@ -99,7 +96,6 @@
     peer.on('open', id => document.getElementById('my-id').innerText = "YOUR ID: " + id);
     peer.on('connection', c => { conn = c; mode = "host"; setupConnection(); });
 
-    // FIXED: Only share the ID itself
     function shareID() {
         const myID = peer.id;
         if(!myID) return alert("Still connecting...");
@@ -151,16 +147,25 @@
         return arr;
     }
 
-    // FIXED: Host starts Top-Left, Guest starts Bottom-Right
+    // FIXED: Correct positioning for both Offline and Online modes
     function resetRound() {
         const w = canvas.width;
         const h = canvas.height;
-        if(mode === "guest") {
-            player.x = w - 50; player.y = h - 50; // Guest Bottom Right
-            enemy.x = enemy.targetX = 50; enemy.targetY = 50; // Enemy (Host) Top Left
+        
+        if(mode === "ai") {
+            // Offline: Player Top Left, AI Bottom Right
+            player.x = 50; player.y = 50;
+            enemy.x = w - 50; enemy.y = h - 50;
+        } else if(mode === "guest") {
+            // Online Guest: Bottom Right
+            player.x = w - 50; player.y = h - 50;
+            enemy.targetX = 50; enemy.targetY = 50;
+            enemy.x = 50; enemy.y = 50;
         } else {
-            player.x = 50; player.y = 50; // Host Top Left
-            enemy.x = enemy.targetX = w - 50; enemy.targetY = h - 50; // Enemy Bottom Right
+            // Online Host: Top Left
+            player.x = 50; player.y = 50;
+            enemy.targetX = w - 50; enemy.targetY = h - 50;
+            enemy.x = w - 50; enemy.y = h - 50;
         }
         bullets = [];
     }
@@ -265,7 +270,6 @@
 
     function loop() { update(); draw(); if(gameActive) requestAnimationFrame(loop); }
 
-    // Inputs
     document.getElementById('joyBase').addEventListener('touchstart', e => { e.preventDefault(); stick.active = true; });
     window.addEventListener('touchmove', e => {
         if(!stick.active) return;
