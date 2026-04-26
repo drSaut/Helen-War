@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Helen War - Online Tactical</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #fff; }
+        canvas { display: none; touch-action: none; position: absolute; top: 0; left: 0; }
+        
+        /* Main Menu */
+        #menu {
+            position: absolute; width: 100%; height: 100%; background: #000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 5000;
+        }
+        h1 { font-size: 45px; color: #00ff00; text-shadow: 0 0 20px #00ff00; margin-bottom: 5px; }
+        .instr { font-size: 12px; margin-bottom: 30px; color: #888; text-transform: uppercase; letter-spacing: 2px; }
+        
+        .btn {
+            width: 260px; padding: 15px; margin: 10px; border: 2px solid #00ff00;
+            background: rgba(0,255,0,0.05); color: #00ff00; font-weight: bold; cursor: pointer; border-radius: 12px;
+            font-size: 14px; text-transform: uppercase;
+        }
+        .btn:active { background: #00ff00; color: #000; }
+
+        #online-setup { display: none; flex-direction: column; align-items: center; }
+        input { padding: 12px; margin: 10px; background: #111; border: 1px solid #00ff00; color: #fff; text-align: center; border-radius: 8px; width: 220px; }
+
+        /* HUD */
+        #ui { position: absolute; top: 20px; width: 100%; display: none; justify-content: space-around; z-index: 10; font-size: 22px; pointer-events: none; }
+        .score-card { border: 2px solid #00ff00; padding: 8px 20px; border-radius: 10px; background: rgba(0,0,0,0.8); box-shadow: 0 0 15px rgba(0,255,0,0.3); }
+        
+        #notif { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 35px; font-weight: bold; z-index: 2000; text-shadow: 0 0 15px #fff; }
+        
+        /* Controls */
+        #controls { display: none; }
+        #joyBase { position: absolute; bottom: 50px; left: 40px; width: 110px; height: 110px; background: rgba(255,255,255,0.05); border: 2px solid #00ff00; border-radius: 50%; z-index: 100; touch-action: none; }
+        #joyKnob { position: absolute; top: 35px; left: 35px; width: 40px; height: 40px; background: #00ff00; border-radius: 50%; opacity: 0.7; pointer-events: none; }
+        #fireBtn { position: absolute; bottom: 50px; right: 40px; width: 100px; height: 100px; border-radius: 50%; background: rgba(0, 255, 0, 0.2); border: 4px solid #00ff00; color: #00ff00; display: flex; justify-content: center; align-items: center; font-weight: bold; z-index: 100; touch-action: none; font-size: 18px; box-shadow: 0 0 20px rgba(0,255,0,0.4); }
+
+        #splash-win { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 6000; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="score-card"><span id="pScore" style="color:#0ff">0</span> - <span id="eScore" style="color:#f00">0</span></div>
+    </div>
+
+    <div id="notif">POINT!</div>
+
+    <div id="menu">
+        <h1>HELEN WAR</h1>
+        <p class="instr">MISSION: KILL YOUR ENEMY</p>
+        
+        <div id="main-btns">
+            <button class="btn" onclick="startOffline()">OFFLINE VS AI</button>
+            <button class="btn" onclick="showOnline()">ONLINE VS FRIEND</button>
+        </div>
+
+        <div id="online-setup">
+            <p id="my-id" style="color:#888; font-size:11px; margin-bottom: 5px;">CONNECTING TO WRC...</p>
+            <button class="btn" onclick="shareID()" style="border-color: #25D366; color: #25D366; font-size: 11px;">SHARE MY ID (WHATSAPP)</button>
+            <input type="text" id="join-id" placeholder="PASTE FRIEND ID">
+            <button class="btn" onclick="connectToFriend()">JOIN DUEL</button>
+            <button class="btn" style="border-color: #555; color: #555;" onclick="location.reload()">BACK</button>
+        </div>
+    </div>
+
+    <div id="splash-win">
+        <h1 id="winText">VICTORY!</h1>
+        <button class="btn" onclick="location.reload()">MAIN MENU</button>
+    </div>
+
+    <div id="controls">
+        <div id="joyBase"><div id="joyKnob"></div></div>
+        <div id="fireBtn">FIRE</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const peer = new Peer();
+    
+    let mode = "ai"; 
+    let conn;
+    let gameActive = false, isPaused = false;
+    let pScore = 0, eScore = 0;
+    
+    // Smooth Sync Variables
+    let player = { x: 50, y: 50, r: 15, color: '#00ff00', angle: 0, speed: 2.2 };
+    let enemy = { x: 0, y: 0, r: 15, color: '#ff0000', lastShot: 0, vx: 1.5, targetX: 0, targetY: 0, targetAngle: 0 };
+    let bullets = [], walls = [];
+    let stick = { x: 0, y: 0, active: false };
+
+    // --- NETWORKING ---
+    peer.on('open', id => document.getElementById('my-id').innerText = "YOUR ID: " + id);
+    peer.on('connection', c => { conn = c; mode = "host"; setupConnection(); });
+
+    function shareID() {
+        const myID = peer.id;
+        if(!myID) return alert("Still connecting...");
+        window.open(`https://wa.me/?text=${encodeURIComponent("Duel me in HELEN WAR! My ID: " + myID)}`, '_blank');
+    }
+
+    function connectToFriend() {
+        const id = document.getElementById('join-id').value;
+        if(!id) return;
+        conn = peer.connect(id);
+        mode = "guest"; setupConnection();
+    }
+
+    function setupConnection() {
+        conn.on('open', () => {
+            document.getElementById('menu').style.display = 'none';
+            startGame();
+        });
+        conn.on('data', data => {
+            if(data.type === 'sync') { enemy.targetX = data.x; enemy.targetY = data.y; enemy.targetAngle = data.angle; }
+            if(data.type === 'fire') { spawnBullet(enemy, data.angle); }
+            if(data.type === 'point') { pScore = data.ps; eScore = data.es; updateUI(); triggerRoundNotif(data.win); }
+            if(data.type === 'walls') { walls = data.walls; resetRound(); }
+        });
+    }
+
+    // --- GAME ENGINE ---
+    function startOffline() { mode = "ai"; document.getElementById('menu').style.display = 'none'; startGame(); }
+    function showOnline() { document.getElementById('main-btns').style.display = 'none'; document.getElementById('online-setup').style.display = 'flex'; }
+
+    function startGame() {
+        canvas.style.display = 'block';
+        document.getElementById('ui').style.display = 'flex';
+        document.getElementById('controls').style.display = 'block';
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        if(mode !== "guest") { walls = generateWalls(); if(conn) conn.send({type:'walls', walls: walls}); }
+        resetRound();
+        gameActive = true;
+        loop();
+    }
+
+    function generateWalls() {
+        const w = canvas.width, h = canvas.height;
+        let t = 10;
+        let arr = [{x:0,y:0,w:w,h:t},{x:0,y:h-t,w:w,h:t},{x:0,y:0,w:t,h:h},{x:w-t,y:0,w:t,h:h}];
+        for(let i=0; i<6; i++) {
+            let isV = Math.random()>0.5;
+            arr.push({x:100+Math.random()*(w-200), y:100+Math.random()*(h-200), w:isV?15:80+Math.random()*100, h:isV?80+Math.random()*100:15});
+        }
+        return arr;
+    }
+
+    function resetRound() {
+        player.x = 50; player.y = 50;
+        enemy.x = enemy.targetX = canvas.width - 50; 
+        enemy.y = enemy.targetY = canvas.height - 50;
+        bullets = [];
+    }
+
+    function fire(owner, angle) {
+        spawnBullet(owner, angle);
+        if(conn) conn.send({type: 'fire', angle: angle});
+    }
+
+    function spawnBullet(owner, angle) {
+        bullets.push({
+            x: owner.x + Math.cos(angle)*22, y: owner.y + Math.sin(angle)*22,
+            vx: Math.cos(angle)*2.5, vy: Math.sin(angle)*2.5,
+            r: 6, color: owner.color === '#00ff00' ? '#fff' : '#f44', spawnTime: Date.now()
+        });
+    }
+
+    function update() {
+        if(!gameActive || isPaused) return;
+
+        // Player Move
+        let nx = player.x + stick.x * player.speed, ny = player.y + stick.y * player.speed;
+        if(!checkWall(player, nx, player.y)) player.x = nx;
+        if(!checkWall(player, player.x, ny)) player.y = ny;
+        if(conn) conn.send({type:'sync', x:player.x, y:player.y, angle:player.angle});
+
+        // Sync Enemy (Interpolation)
+        if(mode !== "ai") {
+            enemy.x += (enemy.targetX - enemy.x) * 0.2;
+            enemy.y += (enemy.targetY - enemy.y) * 0.2;
+            enemy.angle += (enemy.targetAngle - enemy.angle) * 0.2;
+        } else {
+            // Smart AI
+            let dx = player.x - enemy.x, dy = player.y - enemy.y, dist = Math.hypot(dx, dy);
+            let dodging = false;
+            bullets.forEach(b => { if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < 70) { enemy.x -= b.vy*0.7; enemy.y += b.vx*0.7; dodging = true; } });
+            if(!dodging && dist > 140) {
+                let mx = (dx/dist)*1.3, my = (dy/dist)*1.3;
+                if(!checkWall(enemy, enemy.x+mx, enemy.y)) enemy.x += mx;
+                if(!checkWall(enemy, enemy.x, enemy.y+my)) enemy.y += my;
+            }
+            enemy.angle = Math.atan2(dy, dx);
+            if(Date.now()-enemy.lastShot > 3000 && dist < 450) { fire(enemy, enemy.angle); enemy.lastShot = Date.now(); }
+        }
+
+        for(let i=bullets.length-1; i>=0; i--) {
+            let b = bullets[i]; b.x += b.vx; b.y += b.vy;
+            if(Date.now()-b.spawnTime > 7000) { bullets.splice(i,1); continue; }
+            for(let w of walls) {
+                if(b.x+b.r > w.x && b.x-b.r < w.x+w.w && b.y+b.r > w.y && b.y-b.r < w.y+w.h) {
+                    let min = Math.min((b.x+b.r)-w.x, (w.x+w.w)-(b.x-b.r), (b.y+b.r)-w.y, (w.y+w.h)-(b.y-b.r));
+                    if(min === (b.x+b.r)-w.x || min === (w.x+w.w)-(b.x-b.r)) b.vx *= -1; else b.vy *= -1;
+                    b.x += b.vx; b.y += b.vy; break;
+                }
+            }
+            if(Math.hypot(b.x-player.x, b.y-player.y) < player.r) { 
+                bullets.splice(i,1); if(mode !== "guest") { eScore++; syncScore('ai'); } 
+            } else if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < enemy.r) { 
+                bullets.splice(i,1); if(mode !== "guest") { pScore++; syncScore('player'); }
+            }
+        }
+    }
+
+    function syncScore(win) {
+        updateUI(); triggerRoundNotif(win);
+        if(conn) conn.send({type:'point', ps: pScore, es: eScore, win: win});
+    }
+
+    function triggerRoundNotif(win) {
+        isPaused = true; const n = document.getElementById('notif');
+        n.innerText = (win === 'ai') ? "YOU DIED" : "ENEMY DIED";
+        n.style.display = 'block';
+        setTimeout(() => {
+            n.style.display = 'none';
+            if(pScore >= 3 || eScore >= 3) {
+                gameActive = false;
+                document.getElementById('winText').innerText = pScore >= 3 ? "VICTORY" : "DEFEAT";
+                document.getElementById('splash-win').style.display = 'flex';
+            } else {
+                if(mode !== "guest") { walls = generateWalls(); if(conn) conn.send({type:'walls', walls: walls}); }
+                resetRound(); isPaused = false;
+            }
+        }, 2000);
+    }
+
+    function checkWall(o, nx, ny) {
+        for(let w of walls) if(nx+o.r > w.x && nx-o.r < w.x+w.w && ny+o.r > w.y && ny-o.r < w.y+w.h) return true;
+        return false;
+    }
+
+    function updateUI() { document.getElementById('pScore').innerText = pScore; document.getElementById('eScore').innerText = eScore; }
+
+    function draw() {
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.shadowBlur = 10; ctx.shadowColor = "#0ff"; ctx.strokeStyle = "#0ff"; ctx.lineWidth = 2;
+        walls.forEach(w => ctx.strokeRect(w.x, w.y, w.w, w.h)); ctx.shadowBlur = 0;
+        [player, enemy].forEach(c => {
+            ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.angle);
+            ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(c.r-4,0,4,0,Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
+        bullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); });
+    }
+
+    function loop() { update(); draw(); if(gameActive) requestAnimationFrame(loop); }
+
+    // Inputs
+    document.getElementById('joyBase').addEventListener('touchstart', e => { e.preventDefault(); stick.active = true; });
+    window.addEventListener('touchmove', e => {
+        if(!stick.active) return;
+        let r = document.getElementById('joyBase').getBoundingClientRect();
+        let dx = e.touches[0].clientX - (r.left+55), dy = e.touches[0].clientY - (r.top+55);
+        let d = Math.hypot(dx,dy); if(d>40) { dx*=40/d; dy*=40/d; }
+        stick.x = dx/40; stick.y = dy/40;
+        document.getElementById('joyKnob').style.transform = `translate(${dx}px,${dy}px)`;
+        player.angle = Math.atan2(dy,dx);
+    }, {passive:false});
+    window.addEventListener('touchend', () => { stick.active=false; stick.x=0; stick.y=0; document.getElementById('joyKnob').style.transform=`translate(0,0)`; });
+    document.getElementById('fireBtn').addEventListener('touchstart', e => { e.preventDefault(); if(gameActive && !isPaused) fire(player, player.angle); });
+</script>
+</body>
+</html>
